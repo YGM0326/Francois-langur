@@ -1,1 +1,587 @@
+rm(list = ls())
+setwd("D:/7_Paper/hyh/result/MAR_2019/4rm") # Set working directory
+# install.packages("usdm")
+# devtools::install_github("rpatin/gbm")
+# devtools::install_github("mrmaxent/maxnet")
+# library(devtools)
+# devtools::install_github("HemingNM/ENMwizard")
+# devtools::install_github("biomodhub/biomod2", dependencies = TRUE) # Install the new version of biomod2 package
+library(spThin)
+library(car)
+library(raster)
+library(terra)
+library(biomod2)
+library(ENMwizard)
+library(tidyverse)
+library(usdm)
+
+# folder_path <- "D:/7_Paper/hyh/var/c_v/a1999"
+# Read all raster data in the folder
+# rasters <- list.files(path = folder_path, pattern = ".tif", full.names = TRUE)
+# Stack the rasters
+# raster_stack <- stack(rasters)
+# Use the select_vars() function in the ENMwizard package to calculate correlations and select variables
+# result <- ENMwizard::select_vars(
+#   env = raster_stack,
+#   cutoff = 0.7,
+#   corr.mat = NULL,
+#   names.only = TRUE,
+#   plot.dend = TRUE,
+#   rm.old = FALSE,
+#   sp.nm = "Trachypithecus francoisi")
+
+# Export the correlation matrix calculated
+# write.csv(result$corr.mat, file = "correlation_matrix.csv", row.names = TRUE)
+
+# Extract selected variables
+# selected_vars <- result$sel_vars
+# myExpl <- raster_stack[[selected_vars]] # Stack raster files
+# plot(myExpl) # Plotting
+
+
+# Calculate multicollinearity (variable variance inflation factor) ####Using the vifor function from the usdm package
+# myExpl <- as.data.frame(myExpl)
+# vif(myExpl) 
+# v1 <- vifcor(myExpl, th=0.9); v1   
+# re1 <- exclude(myExpl, v1); re1    
+# v2 <- vifstep(myExpl, th=5); v2  
+# re2 <- exclude(myExpl, v2); re2    
+
+##########################################################################################################################
+# Filter species occurrence data
+# occ <- read.csv("D:/7_Paper/hyh/occ/Point1987_1999.csv", header = TRUE) # Read species occurrence data
+# head(occ)
+# thin_occ <- thin(
+#   loc.data = occ, ## Original species occurrence dataset
+#   lat.col = "latitude",
+#   long.col = "longitude",
+#   spec.col = "sps",
+#   thin.par = 1,  # Thinning distance in kilometers
+#   reps = 5,      # Number of thinning iterations
+#   locs.thinned.list.return = FALSE,
+#   write.files = TRUE,    # Save csv file or not
+#   max.files = 1,         # Number of output files
+#   out.dir = "C:\\Users\\10284\\Desktop\\QXN\\result", # Output file directory
+#   out.base = "thinned_occ",     # Output file name
+#   verbose = TRUE)
+# Extract after thinning species data
+# thined_occ <- read.csv("C:\\Users\\10284\\Desktop\\QXN\\occ\\mh2km.csv")
+# pre_occ <- thined_occ[, -1] # Remove the first column
+# pre_occ # View species occurrence data
+# plot(pre_occ)
+# length(which(!is.na(values(subset(pre_var, 1)))) # Count of non-missing values in a raster file
+# pre_var # View prediction variables
+
+
+######################## Moran's I autocorrelation test
+# library(spdep)
+# Read data from the CSV file
+# data <- read_csv("D:/7_Paper/hyh/occ/Point1987_1999.csv")
+
+# Load necessary packages
+# x <- data$species
+# x
+# Assume data contains 75 processed points, where the longitude and latitude are in the longitude and latitude columns
+# coords <- cbind(data$longitude, data$latitude)
+
+# Create adjacency matrix, using k-nearest neighbors (k=4) which can be adjusted according to actual data
+# nb <- knn2nb(knearneigh(coords, k=4))
+
+# Convert to adjacency weight matrix
+# listw <- nb2listw(nb, style = "W")
+
+# Calculate Moran's I
+# moran.test(data$species, listw)
+#————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+#——————————————————————————————————————————————————————————————————————————————————————————————————————————————
+# Load species occurrence data
+DataSpecies <- read.csv("D:/7_Paper/hyh/occ/Point2010_2024_f.csv")
+head(DataSpecies)
+myRespName <- 'species' # Research species column name
+myResp <- as.numeric(DataSpecies[, myRespName]) # Convert species column to continuous data 
+N <- sum(myResp)
+N
+
+myRespXY <- DataSpecies[, c("longitude", "latitude")]; head(myRespXY)
+## Load environmental data
+# folder_path <- "D:/7_Paper/hyh/var/study_var/lulc2019"
+folder_path <- "D:/7_Paper/hyh/MAR_binary/var/4rm_2019.tif"
+# rasters <- list.files(path = folder_path, pattern = ".tif", full.names = TRUE)
+# Stack the rasters
+rasters <- raster(folder_path)
+myExpl <- stack(rasters)
+# plot(myExpl )
+
+### Convert data to the format required by the package and obtain pseudo-absence data
+set.seed(1) # Set random seed
+myBiomodData <- BIOMOD_FormatingData(resp.var = myResp, 
+                                     expl.var = myExpl, 
+                                     resp.xy = myRespXY,   
+                                     resp.name = myRespName, 
+                                     PA.nb.rep = 1, # Number of repetitions
+                                     filter.raster = TRUE,
+                                     PA.nb.absences = length(myResp), # 10000, ## Number of pseudo-absences
+                                     PA.dist.min = 1000,                # Minimum distance from occurrence points for pseudo-absences
+                                     # PA.dist.max = 300,                # Maximum distance from occurrence points for pseudo-absences
+                                     PA.strategy = 'random')
+plot(myBiomodData)
+
+################################
+### Extract pseudo-absence data to a table
+# patable <- NULL
+# patable$species <- myBiomodData@data.species
+# patable$coord <- myBiomodData@coord
+# patable$env <- myBiomodData@data.env.var
+# patable <- as.data.frame(patable)
+
+# write.csv(patable, "D:/7_Paper/hyh/result/lulc2019/patableuva.csv")
+###############################################
+
+# --------------------------------------------------------------------------------- Automatically configure model parameters
+# k-fold selection
+# cv.k <- bm_CrossValidation(bm.format = myBiomodData,
+#                            strategy = "kfold",
+#                            nb.rep = 5,  # Number of repetitions
+#                            k = 5)      # Number of cross-validation folds
+# head(cv.k)
+
+# allModels <- c("ANN", "FDA", "CTA", "GBM", "MARS", "RF", "MAXENT.Phillips.2", "GAM") # "MARS", "ANN", "CTA", "FDA", "GBM", "GLM",
+
+# bigboss parameters
+# myBiomodOption <- bm_ModelingOptions(data.type = 'binary',
+#                             models = allModels,
+#                             strategy = "bigboss",
+#                             bm.format = myBiomodData,
+#                             calib.lines = cv.k
+#                           )
+# 
+# myBiomodOption
+
+
+###———————————————————————————————————————————————————— Custom model settings for each configuration
+
+# user.ANN <- list('_allData_allRun' = list(size = 2),
+#                  '_PA1_allRun' = list(size = 2))
+#                # '_PA1_RUN1' = list(size = 2),
+#                #'_PA1_RUN2' = list(size = 2))
+
+# user.CTA <- list('_allData_allRun' = list(method = "class"),
+#                  '_PA1_allRun' = list(method = "class"),
+#                  '_PA1_RUN1' = list(method = "class"))
+#                  #'_PA1_RUN2' = list(method = "class"))
+
+# user.MARS <- list('_allData_allRun' = list(pmethod = "backward"),
+#                   '_PA1_allRun' = list(pmethod = "backward"))
+##
+# user.GLM <- list('_allData_allRun' = list(type = 'quadratic', interaction.level = 0),
+#                  '_PA1_allRun' = list(type = 'quadratic', interaction.level = 0))
+
+# user.GBM <- list('_allData_allRun' = list(n.trees = 2000),
+#                  '_PA1_allRun' = list(n.trees = 2000))
+
+# user.GAM <- list('_allData_allRun' = list(algo = "GAM.gam.gam"))
+
+# user.RF <- list('_allData_allRun' = list(ntree = 1000),
+#                 '_PA1_allRun' = list(ntree = 1000))
+
+# user.MAXENT <- list('_allData_allRun' = list(path_to_maxent.jar = getwd(),
+#                                              product = TRUE,
+#                                              threshold = TRUE,
+#                                              hinge = TRUE),
+#                     '_PA1_allRun' = list(path_to_maxent.jar = getwd(),
+#                                          product = TRUE,
+#                                          threshold = TRUE,
+#                                          hinge = TRUE)
+# )
+
+#
+# user.val <- list(
+#                   CTA.binary.rpart.rpart = user.CTA,
+#                   ANN.binary.nnet.nnet = user.ANN,
+#                   FDA.binary.mda.mda = user.FDA,
+#                   GBM.binary.gbm.gbm = user.GBM,
+#                   GLM.binary.stats.glm = user.GLM,
+#                   MARS.binary.earth.earth = user.MARS,
+#                   MAXENT.binary.MAXENT.MAXENT = user.MAXENT,
+#                   RF.binary.randomForest.randomForest = user.RF
+#                   # GAM.binary.mgcv.gam = user.GAM
+#                   )
+
+# user.val <- list(
+#  ANN.binary.nnet.nnet = user.ANN,
+#  CTA.binary.rpart.rpart = user.CTA,
+#  FDA.binary.mda.fda = user.FDA,
+#  GBM.binary.gbm.gbm = user.GBM,
+#  GLM.binary.stats.glm = user.GLM,
+#  MARS.binary.earth.earth = user.MARS,
+#  MAXENT.binary.MAXENT.MAXENT = user.MAXENT, 
+#  RF.binary.randomForest.randomForest = user.RF
+# )
+
+# opt.u <- bm_ModelingOptions(data.type = 'binary',
+#                             models = c("CTA", "ANN"), # ,"FDA", "GBM", "GLM", "MARS", "MAXENT", "RF"),
+#                             strategy = 'user.defined',
+#                             user.val = user.val,
+#                             bm.format = myBiomodData,
+#                             calib.lines  = NULL )
+
+# opt.u@options$CTA.binary.rpart.rpart@args.values
+
+
+################################## Custom model parameter optimization
+
+# myBiomodOption <- bm_ModelingOptions(
+#             data.type = "binary",
+#             models = c("GLM", "GAM", "GBM"),
+#             strategy = 'user.defined',
+#             user.val = user.val,
+#             #user.base = "bigboss",
+#             bm.format = myBiomodData
+# )
+# myBiomodOption
+
+
+
+
+# ---------------------------------------------------------------------------------------- Setup different methods and types
+# windowsFonts(Times = windowsFont("Times New Roman")) # Set the plotting font
+
+myBiomodModelOut <- BIOMOD_Modeling(myBiomodData,
+                                    # modeling.id = as.character(format(Sys.time(), "%s")),    # Set current time as a unique ID for model run
+                                    models = c("CTA", "GBM", "RF", "MAXENT.Phillips.2"),
+                                    CV.strategy = "kfold",
+                                    CV.nb.rep = 5,                                      # Number of model repetitions
+                                    CV.perc = 0.7,                                       # Proportion of training dataset
+                                    CV.k =  5,                                            # Number of K-fold cross-validation
+                                    var.import = 3,                                       # Variable importance calculation method
+                                    OPT.strategy = "bigboss",                             # Parameter optimization strategy                  
+                                    # OPT.user = myBiomodOption,                           # Custom model parameters
+                                    metric.eval = c('TSS', 'ROC'),                       # Model evaluation metrics
+                                    seed.val = 123)                                      # Random seed
+                                    
+
+# nb.cpu = 1)                                       # Number of CPU parallel runs
+
+myBiomodModelOut
+
+######################## Evaluate individual model scores and variable importance
+# Model evaluation scores
+# evaluation_data <- get_evaluations(myBiomodModelOut)       
+# write.csv(evaluation_data, "D:/7_Paper/hyh/result/lulc2019/angle_models_evaluation_results.csv", row.names = FALSE)
+# Model variable importance
+# var_important_data <- get_variables_importance(myBiomodModelOut)   
+# write.csv(var_important_data, "D:/7_Paper/hyh/result/lulc2019/angle_models_var_results.csv", row.names = FALSE)
+# Model prediction results
+# predictions_data <- get_predictions(myBiomodModelOut) 
+# write.csv(predictions_data, "D:/7_Paper/hyh/result/lulc2019/angle_models_pridiction_results.csv", row.names = FALSE)
+
+
+######################### Plot model results
+# Model evaluation score comparison
+bm_PlotEvalMean(bm.out = myBiomodModelOut,
+                metric.eval = c("TSS", "roc"),
+                dataset = "calibration", 
+                group.by = 'algo', 
+                do.plot = TRUE
+)
+
+# bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c('algo', 'algo')) 
+
+#### Variable importance
+# bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c('algo', 'algo', 'expl.var')) # Group by variable
+
+# bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c('expl.var', 'algo', 'algo')) # Group by model
+
+
+
+##### Draw response curves
+# myGLM1 <- BIOMOD_LoadModels(myBiomodModelOut, 
+#                             PA = "PA1",         # Cross-validation partition
+#                             run = "RUN1",      # Run number
+#                             algo = "RF")       # Algorithm 
+
+# myGLM <- BIOMOD_LoadModels(myBiomodModelOut, run = "RUN1") 
+# myGLM <- BIOMOD_LoadModels(myBiomodModelOut, PA = "PA1") 
+# myGLM <- BIOMOD_LoadModels(myBiomodModelOut, algo = "RF") 
+
+# myGML <- get_built_models(myBiomodModelOut)[c(1:3, 12:14)] # Plot specific models' curves
+
+
+# bm_PlotResponseCurves(bm.out = myBiomodModelOut, 
+#                       show.variables = c("bio2"), # Plot specific variable curves
+#                       models.chosen = "all",
+#                       # fixed.var = 'min', # Drawing method
+#                       fixed.var = 'median') 
+
+
+#bm_PlotResponseCurves(bm.out = myBiomodModelOut, 
+#                      models.chosen = get_built_models(myBiomodModelOut)[3],
+#                      fixed.var = 'median',
+#                      do.bivariate = TRUE)
+
+# -------------------------------------------------------------------------------——————————Ensemble models and projection
+#####Projecting single model
+myBiomodProj <- BIOMOD_Projection(bm.mod = myBiomodModelOut,     # Single model output result
+                                  proj.name = "Current",      # Result path name
+                                  new.env = myExpl,          # Projection variable set
+                                  models.chosen = 'all',    # Projected models
+                            #     models.chosen = myGBM,
+                                  metric.binary = 'all',    # Metrics used for presence and absence
+                                  metric.filter = 'all',      # Metrics used for model projection optimization
+                                  overwrite=TRUE,              # Overwrite command
+                                  build.clamping.mask = TRUE)
+                            
+#     ,on_0_1000 = FALSE)             # Whether to convert model predicted probability values from 0-1 to 0-1000 to save space
+
+#myBiomodProj
+
+#####Choosing specific algorithm models for integration or plotting response curves
+#myMAXENT <- BIOMOD_LoadModels(myBiomodModelOut, algo = ("MAXNET")) 
+#myRF <- BIOMOD_LoadModels(myBiomodModelOut, algo = ("RF")) 
+#myCTA <- BIOMOD_LoadModels(myBiomodModelOut, algo = ("CTA")) 
+#myFDA <- BIOMOD_LoadModels(myBiomodModelOut, algo = ("FDA"))
+#myMARS <- BIOMOD_LoadModels(myBiomodModelOut, algo = ("MARS")) 
+#myGBM <- BIOMOD_LoadModels(myBiomodModelOut, algo = ("GBM")) 
+
+#####Ensemble model
+myBiomodEM <- BIOMOD_EnsembleModeling(bm.mod = myBiomodModelOut,
+                                      # models.chosen = myGBM,
+                                      models.chosen ='all',                     # Choose the models for the ensemble
+                                      em.by = 'all',                            # Rule for ensemble modeling 
+                                      em.algo = c('EMwmean'),#em.algo = c('EMmean', 'EMcv', 'EMci', 'EMmedian', 'EMca', 'EMwmean'),  # Algorithm for ensemble models
+                                      #metric.select = c('ROC'),                  # Select models for integration based on model metrics
+                                      # metric.select.thresh = c(0.8),            # Threshold for model metrics used for integration
+                                      metric.eval = c('TSS', 'ROC' ),          ## Evaluation metrics for the ensemble model
+                                      var.import = 4,                          # Variable importance calculation method
+                                      EMci.alpha = 0.05,                      ##
+                                      EMwmean.decay = 'proportional')          ### Decay method for weighted mean ensemble models
+
+#myBiomodEM
+#folder_path <- "D:/7_Paper/hyh/var/c_v/a2019"
+#rasters <- list.files(path = folder_path, pattern = ".tif", full.names = TRUE)
+# Stack rasters
+#myExpl <- stack(rasters)
+################################################### Projecting ensemble model (using both single model projection results and constructing ensemble models)
+#####Using single model projection results
+myBiomodEMProj <- BIOMOD_EnsembleForecasting(bm.em = myBiomodEM, 
+                                             output.format = ".tif",           # Output format
+                                             bm.proj = myBiomodProj,            # Single model projection results
+                                             models.chosen = 'all',
+                                             metric.binary = 'all',
+                                             metric.filter = 'all')
+                                     
+
+#       on_0_1000 = FALSE)                
+
+#myBiomodEMProj
+plot(myBiomodEMProj)
+
+ #########################Constructing ensemble models and projecting (for data at different temporal and spatial scales, no need for single model projection))
+# myBiomodEMProj <- BIOMOD_EnsembleForecasting(bm.em = myBiomodEM,
+#                                              proj.name = 'CurrentEM',
+#                                              new.env = myExpl,          # Construct model environmental data
+#                                             models.chosen = 'all',
+#                                              metric.binary = 'all',
+#                                              metric.filter = 'all')
+
+#####Evaluating ensemble model scores and variable importance
+evaluations <- get_evaluations(myBiomodEM)
+importance <- get_variables_importance(myBiomodEM)
+write.csv(evaluations, "ens_evaluations.csv")
+write.csv(importance, "ens_importance.csv")
+
+####Plot variable importance 
+bm_PlotEvalMean(bm.out = myBiomodEM, group.by = 'full.name')
+bm_PlotEvalBoxplot(bm.out = myBiomodEM, group.by = c('full.name', 'full.name'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c('expl.var', 'full.name', 'full.name'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c('expl.var', 'algo', 'merged.by.run'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c('algo', 'expl.var', 'merged.by.run'))
+
+####Plot response curves
+myGLM <- BIOMOD_LoadModels(myBiomodEM, algo = "EMwmean") 
+
+response_curves <- bm_PlotResponseCurves(bm.out = myBiomodEM, 
+                     # models.chosen = all,
+                      show.variables = c("DTR"), # Select variables to plot
+                      fixed.var = 'median',
+                      do.bivariate = FALSE,
+                      do.plot = TRUE,
+                      do.progress = TRUE)
+#bm_PlotResponseCurves(bm.out = myBiomodEM, 
+#                      models.chosen = get_built_models(myBiomodEM)[c(1)],
+#                      fixed.var = 'min')
+
+#bm_PlotResponseCurves(bm.out = myBiomodEM, 
+#                      models.chosen = get_built_models(myBiomodEM)[1],
+#                      fixed.var = 'median',
+#                      do.bivariate = TRUE) # extract response curves
+# Extract data
+#y <- response_curves[["tab"]][["pred.val"]]          # Extract predicted values as y
+#x <- response_curves[["tab"]][["expl.val"]]          # Extract explanatory variables as x
+#expl_name <- response_curves[["tab"]][["expl.name"]] # Extract variable names
+
+# Create a dataframe for export
+#export_data <- data.frame(
+#  expl.val = x,
+#  pred.val = y,
+#  expl.name = rep(expl_name, length(x))  # Ensure variable name length matches data
+#)
+
+# Export as CSV file
+#write.csv(export_data, "D:/7_Paper/hyh/result/response_curves_data/1999_PCA3.csv", row.names = FALSE)  # Replace with your export path and filename
+
+#---------------------------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------------------------
+
+#########################Convert probability distribution map to landscape resistance surface using exponential function
+library(raster)
+library(rasterVis)
+
+ensemble_raster <- raster("D:/7_Paper/hyh/Circuitscape/Assistance/HS_lulc_2009.tif")
+plot(ensemble_raster)
+
+# Exponential function transformation
+resistance_raster <- 1000^((-1) * ensemble_raster)
+plot(resistance_raster)
+
+#writeRaster(resistance_raster, filename = "C:/Users/10284/Desktop/smaxent/circure/resistance_raster.tif", format = "GTiff")
+
+# Calculate minimum and maximum values
+min_resistance <- minValue(resistance_raster)
+max_resistance <- maxValue(resistance_raster)
+
+# Normalize landscape resistance values to 0-100
+normalized_resistance <- (resistance_raster - min_resistance) / (max_resistance - min_resistance) * 99 + 1
+plot(normalized_resistance)
+
+# Export raster
+writeRaster(normalized_resistance, filename="D:/7_Paper/hyh/Circuitscape/note_asc/resistance_lulc_2009.tif", format="GTiff")
+
+#————————————————————————————————————————————————————————————————————————————————————————————————
+#————————————————————————————————————————————————————————————————————————————————————————————————
+library(raster)
+library(terra)
+rm(list = ls())
+
+# Read model predicted 0-1 probability distribution map
+raster_file <- "D:/7_Paper/hyh/Circuitscape/Assistance/binary_lulc_2019.tif"
+pre <- raster(raster_file)
+
+# Set coordinate system
+proj4string(pre)
+crs(pre) <- crs("+proj=utm +zone=48 +datum=WGS84")
+threshold <-  0.5 # Set threshold
+
+binary_map <- pre > threshold
+binary_map <- rast(binary_map)  ## Convert to binary distribution map
+
+plot(binary_map)
+
+pach_raster <- patches(binary_map, directions=8, zeroAsNA=TRUE, allowGaps=TRUE) # Identify patches
+
+pach_n <- zonal(cellSize(pach_raster, unit="km"), pach_raster, sum, as.raster=TRUE)
+
+opt_raster <- ifel(pach_n <= 46.19, 0, pach_n) # Select patches - only select patches with value 1
+#opt_raster <- ifel(pach_n <= 22.56, 0, 1)  # Select patches
+opt_raster[is.na(pach_n)] <- 0  # Assign invalid pixels a value of 0
+plot(opt_raster)
+
+writeRaster(opt_raster, filename=file.path("D:/7_Paper/hyh/MAR_habitat/2019_lulc_MAR_habitat.tif"), overwrite=TRUE)
+
+######################################################################################Marginal response curves
+
+library(ggplot2)
+library(dplyr)
+# Read CSV file
+data <- read.csv("D:/7_Paper/hyh/result/response_curves_data/PCA3.csv")
+
+# Ensure dataframe has no NA values
+data <- na.omit(data)  # Remove rows with NA
+
+# Ensure expl_val and pred_val are numeric
+data$expl.val <- as.numeric(data$expl.val)
+data$pred.val <- as.numeric(data$pred.val)
+
+p <- ggplot(data = data) +
+  # Plot scatter plot
+  geom_smooth(mapping = aes(x = expl.val, y = pred.val, color = Time)) +
+  
+  # Custom colors
+  scale_color_manual(values = c("red", "blue", "green")) +
+  
+  # Add scales
+  scale_y_continuous(n.breaks = 5) +
+  scale_x_continuous(n.breaks = 7) +
+  
+  # Change scale label font
+  theme(axis.text = element_text(family = "serif", colour = "black", size = 15)) +
+  
+  # Show scales and add border
+  theme(axis.ticks = element_line(linewidth = 0.5, colour = "black")) +
+  theme(axis.title.x = element_text(family = "serif", size = 30)) +
+  # theme(axis.title.y = element_text(family = "serif", size = 20)) +
+  
+  # Add border, remove internal fill color
+  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+        panel.background = element_rect(fill = NA),  # Remove panel background fill
+        plot.background = element_rect(fill = NA)) +  # Remove entire plot background fill
+  # Remove legend
+  #theme(legend.position = "none") +
+  # Label settings
+  labs(x = "PCA3", y = "Presence probability", title = NULL) #,y = NULL
+
+# Print figure
+print(p)
+
+######################################################################################### Area Change Bar Chart
+library(ggplot2)
+library(tidyr)
+library(readr)
+
+# Read CSV file
+data <- read_csv("D:/7_Paper/hyh/result/csv/change_area.csv")
+
+# Convert data to long format
+data_long <- pivot_longer(data, cols = c("Stabled habitat", "Lost habitat", "Gained habitat"),
+                          names_to = "Habitat_Type", values_to = "Value")
+
+
+# Draw bar chart
+p <- ggplot(data_long, aes(x = Scenario, y = Value, fill = Habitat_Type)) +
+  geom_bar(stat = "identity", width = 0.75, position = position_dodge(), alpha = 0.7) +   
+  facet_grid(~ Periods) +   
+  theme_minimal() +  
+  labs(x = "Models",
+       y = expression("Area (Km"^2*")")) + 
+  #scale_fill_manual(values = c("Gained habitat" = "#B883D4", 
+  ##                             "Lost habitat" = "#FA7F6F", 
+   #                            "Stabled habitat" = "#32B897")) +   # Custom fill colors
+  scale_fill_manual(values = c("Gained habitat" = rgb(197/255,0/255, 255/255), 
+                               "Lost habitat" = rgb(255/255, 0/255, 0/255), 
+                               "Stabled habitat" = rgb(85/255, 255/255, 0/255))) +  # Correct RGB values used here
+  geom_text(aes(label = Value), 
+            position = position_dodge(0.75), 
+            vjust = -0.5,  # Adjust text position, -0.5 means text is above the bar
+            size = 4) +  # Text size
+  theme(legend.position = "none",
+        text = element_text(size = 12),  # Set global font size
+        axis.text = element_text(size = 15),  # Set axis tick font size
+        axis.title = element_text(size = 16),  # Set axis title font size
+        axis.title.x = element_text(size = 20),  # Set X-axis title font size
+        axis.title.y = element_text(size = 20),  # Set Y-axis title font size
+        #axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate X-axis labels
+        #legend.position = "top",  # Legend position
+        legend.text = element_text(size = 14),  # Set legend item font size
+        legend.title = element_text(size = 16),  # Set legend title font size
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center title and increase font size
+        panel.grid.major = element_blank(),  # Remove major gridlines
+        panel.grid.minor = element_blank(),  # Remove minor gridlines
+        #panel.border = element_rect(color = "black", fill = NA, size = 1),  # Remove border
+        axis.ticks.length = unit(0.25, "cm"),  # Set axis tick line length
+        axis.ticks = element_line(color = "black"),  # Set tick line color to black
+        axis.line = element_line(color = "black",size = 1)  # Add axis lines
+  )
+
+print(p)
+ggsave("C:/Users/Admin/Desktop/Area_Change3.pdf", plot = p, width = 8, height = 6)
 
