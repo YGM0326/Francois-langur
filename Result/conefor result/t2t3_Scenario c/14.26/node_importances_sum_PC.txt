@@ -1,0 +1,2 @@
+Prefix	Distance	Probability	Sum_dPC	Sum_dPCintra	Sum_dPCflux	Sum_dPCconnector	
+NA	0	0	190.665	9.34435	181.311	0.0102651	
